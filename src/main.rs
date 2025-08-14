@@ -1,6 +1,40 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+fn setup_custom_fonts(ctx: &egui::Context) {
+    // 开始设置字体
+    let mut fonts = egui::FontDefinitions::default();
+
+    // 添加中文字体
+    fonts.font_data.insert(
+        "MaoKenZhuYuanTi".to_owned(),
+        std::sync::Arc::from(egui::FontData::from_static(include_bytes!(
+            "../assets/fonts/MaoKenZhuYuanTi-MaokenZhuyuanTi-2.ttf"
+        ))),
+    );
+
+    // 设置优先级
+    fonts.families.insert(
+        egui::FontFamily::Proportional,
+        vec![
+            "MaoKenZhuYuanTi".to_owned(), // 首选字体
+            "Ubuntu-Light".to_owned(),    // 回退到默认字体
+            "NotoEmoji-Regular".to_owned(),
+            "emoji-icon-font".to_owned(),
+        ],
+    );
+
+    // 应用字体设置
+    ctx.set_fonts(fonts);
+}
+
+fn setup_custom_style(ctx: &egui::Context) {
+    let mut style = egui::Style::default();
+    style.spacing.slider_width = 100.0;
+    style.spacing.window_margin = egui::Margin::ZERO;
+    ctx.set_style(style);
+}
+
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
@@ -8,19 +42,25 @@ fn main() -> eframe::Result {
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([400.0, 300.0])
-            .with_min_inner_size([300.0, 220.0])
+            .with_inner_size([800.0, 600.0])
+            .with_min_inner_size([500.0, 300.0])
+            .with_decorations(true)
+            .with_resizable(true)
             .with_icon(
-                // NOTE: Adding an icon is optional
                 eframe::icon_data::from_png_bytes(&include_bytes!("../assets/icon-256.png")[..])
                     .expect("Failed to load icon"),
             ),
         ..Default::default()
     };
     eframe::run_native(
-        "eframe template",
+        "分形摆",
         native_options,
-        Box::new(|cc| Ok(Box::new(eframe_template::TemplateApp::new(cc)))),
+        Box::new(|cc| {
+            setup_custom_fonts(&cc.egui_ctx);
+            setup_custom_style(&cc.egui_ctx);
+            cc.egui_ctx.set_visuals(egui::Visuals::dark());
+            Ok(Box::new(fractal_pendulum::TemplateApp::new(cc)))
+        }),
     )
 }
 
@@ -50,7 +90,12 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(eframe_template::TemplateApp::new(cc)))),
+                Box::new(|cc| {
+                    setup_custom_fonts(&cc.egui_ctx);
+                    setup_custom_style(&cc.egui_ctx);
+                    cc.egui_ctx.set_visuals(egui::Visuals::dark());
+                    Ok(Box::new(fractal_pendulum::TemplateApp::new(cc)))
+                }),
             )
             .await;
 
