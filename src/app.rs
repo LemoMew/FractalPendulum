@@ -240,7 +240,7 @@ impl FractalPendulumApp {
                 1e-12,
             );
             let res = stepper.integrate();
-            if let Ok(_) = res {
+            if res.is_ok() {
                 let y = stepper.y_out().last().expect("数值计算的结果应当存在");
                 self.setting.q = [y[0], y[1], y[2], y[3], y[4], y[5]];
                 for i in [0, 2, 4] {
@@ -288,7 +288,7 @@ impl FractalPendulumApp {
             });
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     fn paint(&mut self, painter: &egui::Painter) {
         struct Node {
             start: Complex32,
@@ -443,7 +443,7 @@ impl FractalPendulumApp {
         painter.extend(shapes.into_iter().rev());
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     fn options_ui(&mut self, ui: &mut egui::Ui) {
         ui.checkbox(&mut self.setting.paused, "暂停");
 
@@ -776,7 +776,7 @@ impl FractalPendulumApp {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("状态");
-                    ui.label(self.data.debug_message.to_owned());
+                    ui.label(self.data.debug_message.clone());
                     ui.end_row();
 
                     ui.label("可见线段");
