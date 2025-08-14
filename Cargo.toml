@@ -24,7 +24,7 @@ log = "0.4.27"
 rand = "0.9.2"
 num-complex = "0.4.6"
 ode_solvers = "0.6.1"
-getrandom = { version = "0.3.3", features = ["wasm_js"] }
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 # You only need serde if you want app persistence:
 serde = { version = "1.0.219", features = ["derive"] }

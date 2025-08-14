@@ -32,6 +32,8 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - uses: actions-rs/cargo@v1
+        env:
+          RUSTFLAGS: '--cfg getrandom_backend="wasm_js"'
         with:
           command: check
           args: --all-features --lib --target wasm32-unknown-unknown
@@ -88,6 +90,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        env:
+          RUSTFLAGS: '--cfg getrandom_backend="wasm_js"'
         with:
           toolchain: stable
           targets: wasm32-unknown-unknown
