@@ -45,10 +45,7 @@ impl eframe::App for TemplateApp {
                 egui::widgets::global_theme_preference_buttons(ui);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.menu_button("关于", |ui| {
-                        ui.add(egui::github_link_file!(
-                            "https://github.com/LemoMew/FractalPendulum/",
-                            "项目地址"
-                        ));
+                        ui.hyperlink_to("项目地址", "https://github.com/LemoMew/FractalPendulum/");
                         powered_by_egui_and_eframe(ui);
                     });
                     ui.menu_button("提示", |ui| {
@@ -247,6 +244,7 @@ impl FractalPendulumApp {
             let res = stepper.integrate();
             if res.is_ok() {
                 let y = stepper.y_out().last().expect("数值计算的结果应当存在");
+                // 获取计算结果，把角度转化到正负pi之间
                 self.setting.q = [y[0], y[1], y[2], y[3], y[4], y[5]];
                 for i in [0, 2, 4] {
                     self.setting.q[i] = self.setting.q[i].rem_euclid(TAU);
@@ -255,11 +253,13 @@ impl FractalPendulumApp {
                     }
                 }
 
+                // 改个名方便说话
                 let g = self.setting.g;
                 let [l1, l2, l3] = self.setting.l;
                 let [m1, m2, m3] = self.setting.m;
                 let [q1, q2, q3, q4, q5, q6] = self.setting.q;
 
+                // 计算动能、势能、机械能
                 self.data.t = 0.5 * (m1 + m2 + m3) * l1 * l1 * q2 * q2
                     + 0.5 * m2 * l2 * l2 * q4 * q4
                     + 0.5 * m3 * l3 * l3 * q6 * q6
@@ -906,7 +906,9 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> Color32 {
         h
     } else {
         h + std::f32::consts::TAU
-    } / std::f32::consts::TAU
+    }
+    .rem_euclid(std::f32::consts::TAU)
+        / std::f32::consts::TAU
         * 360.0;
 
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
