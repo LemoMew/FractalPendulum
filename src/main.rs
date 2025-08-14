@@ -8,6 +8,7 @@ fn setup_custom_fonts(ctx: &egui::Context) {
     // 添加中文字体
     fonts.font_data.insert(
         "MaoKenZhuYuanTi".to_owned(),
+        #[expect(clippy::large_include_file)]
         std::sync::Arc::from(egui::FontData::from_static(include_bytes!(
             "../assets/fonts/MaoKenZhuYuanTi-MaokenZhuyuanTi-2.ttf"
         ))),

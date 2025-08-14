@@ -46,7 +46,7 @@ impl eframe::App for TemplateApp {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.menu_button("关于", |ui| {
                         ui.add(egui::github_link_file!(
-                            "https://github.com/LemoMew/FractalPendulum/tree/main",
+                            "https://github.com/LemoMew/FractalPendulum/",
                             "项目地址"
                         ));
                         powered_by_egui_and_eframe(ui);
@@ -55,7 +55,10 @@ impl eframe::App for TemplateApp {
                         ui.label("一些变量可以输入超出拖动条范围的数字");
                         ui.label("有时数字输入负数会出问题，懒得管了，重置就行");
                         ui.label("数值计算错误可以通过缩短迭代步长缓解");
-                        ui.label("角速度很快时看起来运动会比较怪，");
+                        ui.label("角速度很快时看起来运动会比较怪");
+                        ui.label("");
+                        ui.label("动态色相计算方式：在目标值1、2之间插值，");
+                        ui.label("乘以倍率，最后整体偏移目标值3");
                     });
                     egui::warn_if_debug_build(ui);
                 });
@@ -219,7 +222,9 @@ impl eframe::App for FractalPendulumApp {
 }
 
 impl FractalPendulumApp {
+    // 显示内容
     fn ui(&mut self, ui: &mut egui::Ui) {
+        // 没有暂停时，一直请求重绘并且迭代微分方程
         if !self.setting.paused {
             ui.ctx().request_repaint();
             let ode = Ode::new(self);
@@ -270,26 +275,27 @@ impl FractalPendulumApp {
             }
         }
 
+        // 绘制图案
         let painter = egui::Painter::new(
             ui.ctx().clone(),
             ui.layer_id(),
             ui.available_rect_before_wrap(),
         );
         self.paint(&painter);
-
         ui.expand_to_include_rect(painter.clip_rect());
 
+        // 绘制设置界面，对其整体应用不透明度，可以折叠到一行
         ui.multiply_opacity(self.data.opacity);
-        egui::Frame::popup(ui.style())
-            // .stroke(egui::Stroke::NONE)
-            .show(ui, |ui| {
-                ui.set_max_width(270.0);
-                CollapsingHeader::new("选项").show(ui, |ui| self.options_ui(ui));
-            });
+        egui::Frame::popup(ui.style()).show(ui, |ui| {
+            ui.set_max_width(270.0);
+            CollapsingHeader::new("选项").show(ui, |ui| self.options_ui(ui));
+        });
     }
 
     #[expect(clippy::too_many_lines)]
+    // 比较长的画分形函数
     fn paint(&mut self, painter: &egui::Painter) {
+        // 使用起点+向量的形式保存线段，复数便于表示分形迭代时的关系
         struct Node {
             start: Complex32,
             vec: Complex32,
@@ -304,6 +310,7 @@ impl FractalPendulumApp {
             }
         }
 
+        // 改个名方便说话
         let l1 = self.setting.l[0] as f32;
         let l2 = self.setting.l[1] as f32;
         let l3 = self.setting.l[2] as f32;
@@ -311,6 +318,7 @@ impl FractalPendulumApp {
         let t2 = self.setting.q[2] as f32;
         let t3 = self.setting.q[4] as f32;
 
+        // 色相由起点终点插值得到，根据模式的不同选择起点终点
         let h1;
         let h2;
         match self.setting.hue_mode {
@@ -334,17 +342,20 @@ impl FractalPendulumApp {
             }
         }
 
+        // 线段迭代关系
         let transforms = [
             Complex32::from_polar(l2 / l1, t2),
             Complex32::from_polar(l3 / l1, t3),
         ];
 
+        // 缩放到屏幕的坐标变换
         let rect = painter.clip_rect();
         let to_screen = egui::emath::RectTransform::from_to(
             Rect::from_center_size(Pos2::ZERO, rect.square_proportions() / self.setting.zoom),
             rect,
         );
 
+        // 迭代过程中用到的变量
         let mut shapes: Vec<Shape> = Vec::new();
 
         let mut nodes: Vec<Node> = Vec::new();
@@ -352,13 +363,13 @@ impl FractalPendulumApp {
             start: Complex32::new(self.setting.x_offset, self.setting.y_offset),
             vec: Complex32::from_polar(l1, t1 + std::f32::consts::PI / 2.0),
         });
-
         let mut new_nodes: Vec<Node> = Vec::new();
 
         let mut width = self.setting.line_width;
         let mut luminance = self.setting.luminance;
         let mut saturation = self.setting.saturation;
 
+        // 画球
         if self.setting.show_balls {
             let mut ball_nodes: Vec<Node> = Vec::new();
             ball_nodes.push(Node {
@@ -374,7 +385,7 @@ impl FractalPendulumApp {
                 shapes.push(Shape::circle_filled(
                     to_screen * Pos2::new(end.re, end.im),
                     self.setting.m[i].sqrt() as f32 * self.setting.ball_radius,
-                    hsl(
+                    hsl_to_rgb(
                         lerp(h1, h2, 0.5),
                         saturation * self.setting.saturation_decay.powi(i as i32 + 1),
                         luminance * self.setting.luminance_decay.powi(i as i32 + 1),
@@ -383,6 +394,7 @@ impl FractalPendulumApp {
             }
         }
 
+        // 画线段工具
         let mut paint_line = |node: &Node, color: Color32, width: f32| {
             let a = node.start;
             let b = node.start + node.vec;
@@ -391,12 +403,12 @@ impl FractalPendulumApp {
                 to_screen * Pos2::new(b.re, b.im),
             ];
 
-            // culling
             if rect.intersects(Rect::from_two_pos(line[0], line[1])) {
                 shapes.push(Shape::line_segment(line, (width, color)));
             }
         };
 
+        // 画线段，迭代
         for _ in 1..=self.setting.depth {
             new_nodes.clear();
             new_nodes.reserve(nodes.len() * 2);
@@ -408,7 +420,7 @@ impl FractalPendulumApp {
             for (i, a) in nodes.iter().enumerate() {
                 paint_line(
                     a,
-                    hsl(
+                    hsl_to_rgb(
                         lerp(h1, h2, (i as f32 + 0.5) / nodes.len() as f32),
                         saturation,
                         luminance,
@@ -423,10 +435,11 @@ impl FractalPendulumApp {
             std::mem::swap(&mut nodes, &mut new_nodes);
         }
 
+        // 少画的补上
         for (i, a) in nodes.iter().enumerate() {
             paint_line(
                 a,
-                hsl(
+                hsl_to_rgb(
                     lerp(h1, h2, (i as f32 + 0.5) / nodes.len() as f32),
                     saturation,
                     luminance,
@@ -435,15 +448,19 @@ impl FractalPendulumApp {
             );
         }
 
+        // 统计线段数
         self.data.line_count = if self.setting.show_balls {
             shapes.len() - 3
         } else {
             shapes.len()
         };
+
+        // 先画颜色深的，否则会显脏
         painter.extend(shapes.into_iter().rev());
     }
 
     #[expect(clippy::too_many_lines)]
+    // 又臭又长的画设置界面函数，用不着注释，对着成品看就是
     fn options_ui(&mut self, ui: &mut egui::Ui) {
         ui.checkbox(&mut self.setting.paused, "暂停");
 
@@ -801,8 +818,7 @@ impl FractalPendulumApp {
 
                     ui.label("机械能")
                         .on_hover_text("应当守恒。若数值波动较大，说明求解异常。");
-                    ui.label(self.data.e.to_string())
-                        .on_hover_text("应当守恒。若数值波动较大，说明求解异常。");
+                    ui.label(self.data.e.to_string());
                     ui.end_row();
                 });
         });
@@ -815,6 +831,7 @@ impl FractalPendulumApp {
 
 // -------- -------- -------- -------- -------- -------- -------- --------
 
+// 数值解真好啊
 type State = ode_solvers::Vector6<f64>;
 
 struct Ode {
@@ -845,6 +862,7 @@ impl ode_solvers::System<f64, State> for Ode {
         let q5 = y[4];
         let q6 = y[5];
 
+        // sympy给我托梦来的
         let denominator = l1 * (m1 + m2 * q3.sin() * q3.sin() + m3 * q5.sin() * q5.sin());
         dy[0] = q2;
         dy[2] = q4;
@@ -883,7 +901,7 @@ impl ode_solvers::System<f64, State> for Ode {
 
 // -------- -------- -------- -------- -------- -------- -------- --------
 
-fn hsl(h: f32, s: f32, l: f32) -> Color32 {
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> Color32 {
     let h = if h >= 0.0 {
         h
     } else {
