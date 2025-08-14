@@ -2,21 +2,13 @@ use std::f64::consts::{PI, TAU};
 
 use egui::{CollapsingHeader, Color32, Pos2, Rect, Shape};
 use num_complex::Complex32;
-use rand::Rng;
+use rand::Rng as _;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Default)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
     fractal_pendulum_app: FractalPendulumApp,
-}
-
-impl Default for TemplateApp {
-    fn default() -> Self {
-        Self {
-            fractal_pendulum_app: FractalPendulumApp::default(),
-        }
-    }
 }
 
 impl TemplateApp {
@@ -230,16 +222,7 @@ impl FractalPendulumApp {
     fn ui(&mut self, ui: &mut egui::Ui) {
         if !self.setting.paused {
             ui.ctx().request_repaint();
-            let ode = Ode::new(&self);
-            // let mut stepper = Rk4::new(
-            //     ode,
-            //     0.0,
-            // State::new(
-            //     self.q[0], self.q[1], self.q[2], self.q[3], self.q[4], self.q[5],
-            // ),
-            //     0.001,
-            //     0.0005,
-            // );
+            let ode = Ode::new(self);
             let mut stepper = ode_solvers::Dop853::new(
                 ode,
                 0.0,
@@ -257,36 +240,33 @@ impl FractalPendulumApp {
                 1e-12,
             );
             let res = stepper.integrate();
-            match res {
-                Ok(_) => {
-                    let y = stepper.y_out().last().unwrap();
-                    self.setting.q = [y[0], y[1], y[2], y[3], y[4], y[5]];
-                    for i in [0, 2, 4] {
-                        self.setting.q[i] = self.setting.q[i].rem_euclid(TAU);
-                        if self.setting.q[i] > PI {
-                            self.setting.q[i] -= TAU;
-                        }
+            if let Ok(_) = res {
+                let y = stepper.y_out().last().expect("数值计算的结果应当存在");
+                self.setting.q = [y[0], y[1], y[2], y[3], y[4], y[5]];
+                for i in [0, 2, 4] {
+                    self.setting.q[i] = self.setting.q[i].rem_euclid(TAU);
+                    if self.setting.q[i] > PI {
+                        self.setting.q[i] -= TAU;
                     }
-
-                    let g = self.setting.g;
-                    let [l1, l2, l3] = self.setting.l;
-                    let [m1, m2, m3] = self.setting.m;
-                    let [q1, q2, q3, q4, q5, q6] = self.setting.q;
-
-                    self.data.t = 0.5 * (m1 + m2 + m3) * l1 * l1 * q2 * q2
-                        + 0.5 * m2 * l2 * l2 * q4 * q4
-                        + 0.5 * m3 * l3 * l3 * q6 * q6
-                        + m2 * l1 * l2 * q3.cos() * q2 * q4
-                        + m3 * l1 * l3 * q5.cos() * q2 * q6;
-                    self.data.v = -(m1 + m2 + m3) * g * l1 * q1.cos()
-                        - m2 * g * l2 * (q1 + q3).cos()
-                        - m3 * g * l3 * (q1 + q5).cos();
-                    self.data.e = self.data.t + self.data.v;
                 }
-                Err(_) => {
-                    self.setting.paused = true;
-                    self.data.debug_message = "数值计算错误，已暂停".to_owned()
-                }
+
+                let g = self.setting.g;
+                let [l1, l2, l3] = self.setting.l;
+                let [m1, m2, m3] = self.setting.m;
+                let [q1, q2, q3, q4, q5, q6] = self.setting.q;
+
+                self.data.t = 0.5 * (m1 + m2 + m3) * l1 * l1 * q2 * q2
+                    + 0.5 * m2 * l2 * l2 * q4 * q4
+                    + 0.5 * m3 * l3 * l3 * q6 * q6
+                    + m2 * l1 * l2 * q3.cos() * q2 * q4
+                    + m3 * l1 * l3 * q5.cos() * q2 * q6;
+                self.data.v = -(m1 + m2 + m3) * g * l1 * q1.cos()
+                    - m2 * g * l2 * (q1 + q3).cos()
+                    - m3 * g * l3 * (q1 + q5).cos();
+                self.data.e = self.data.t + self.data.v;
+            } else {
+                self.setting.paused = true;
+                self.data.debug_message = "数值计算错误，已暂停".to_owned();
             }
         }
 
@@ -308,6 +288,7 @@ impl FractalPendulumApp {
             });
     }
 
+    #[allow(clippy::too_many_lines)]
     fn paint(&mut self, painter: &egui::Painter) {
         struct Node {
             start: Complex32,
@@ -385,7 +366,7 @@ impl FractalPendulumApp {
                 vec: Complex32::from_polar(l1, t1 + std::f32::consts::PI / 2.0),
             });
             for &transform in &transforms {
-                ball_nodes.push(ball_nodes.first().unwrap().apply(transform));
+                ball_nodes.push(ball_nodes[0].apply(transform));
             }
 
             for (i, ball) in ball_nodes.iter().enumerate() {
@@ -426,7 +407,7 @@ impl FractalPendulumApp {
 
             for (i, a) in nodes.iter().enumerate() {
                 paint_line(
-                    &a,
+                    a,
                     hsl(
                         lerp(h1, h2, (i as f32 + 0.5) / nodes.len() as f32),
                         saturation,
@@ -444,7 +425,7 @@ impl FractalPendulumApp {
 
         for (i, a) in nodes.iter().enumerate() {
             paint_line(
-                &a,
+                a,
                 hsl(
                     lerp(h1, h2, (i as f32 + 0.5) / nodes.len() as f32),
                     saturation,
@@ -462,6 +443,7 @@ impl FractalPendulumApp {
         painter.extend(shapes.into_iter().rev());
     }
 
+    #[allow(clippy::too_many_lines)]
     fn options_ui(&mut self, ui: &mut egui::Ui) {
         ui.checkbox(&mut self.setting.paused, "暂停");
 
@@ -794,7 +776,7 @@ impl FractalPendulumApp {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("状态");
-                    ui.label(self.data.debug_message.to_string());
+                    ui.label(self.data.debug_message.to_owned());
                     ui.end_row();
 
                     ui.label("可见线段");
