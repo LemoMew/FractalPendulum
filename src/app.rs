@@ -1,4 +1,7 @@
-use std::f64::consts::{PI, TAU};
+use std::{
+    f64::consts::{PI, TAU},
+    time::Duration,
+};
 
 use egui::{CollapsingHeader, Color32, Pos2, Rect, Shape};
 use num_complex::Complex32;
@@ -61,6 +64,9 @@ impl eframe::App for TemplateApp {
                 });
             });
         });
+
+        // 消息通知
+        self.fractal_pendulum_app.data.toasts.show(ctx);
 
         // 主体
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -177,13 +183,14 @@ enum HueTarget {
 }
 
 struct FractalPendulumAppData {
+    toasts: egui_notify::Toasts,
     opacity: f32,
     line_count: usize,
     frame_time: u32,
-    debug_message: String,
     t: f64,
     v: f64,
     e: f64,
+    setting_json: String,
 }
 
 impl Default for FractalPendulumApp {
@@ -192,13 +199,15 @@ impl Default for FractalPendulumApp {
             setting: FractalPendulumAppSetting::default(),
 
             data: FractalPendulumAppData {
+                toasts: egui_notify::Toasts::new(),
                 opacity: 1.0,
                 line_count: 0,
                 frame_time: 0,
-                debug_message: "正常".to_owned(),
                 t: 0.0,
                 v: 0.0,
                 e: 0.0,
+                setting_json: serde_json::to_string(&FractalPendulumAppSetting::default())
+                    .expect("默认设置应当能够被序列化"),
             },
         }
     }
@@ -271,7 +280,11 @@ impl FractalPendulumApp {
                 self.data.e = self.data.t + self.data.v;
             } else {
                 self.setting.paused = true;
-                self.data.debug_message = "数值计算错误，已暂停".to_owned();
+                self.data
+                    .toasts
+                    .warning("数值计算出错，已暂停")
+                    .duration(Some(Duration::from_secs(5)))
+                    .show_progress_bar(true);
             }
         }
 
@@ -653,21 +666,21 @@ impl FractalPendulumApp {
 
                     ui.label("x轴偏置");
                     ui.add(
-                        egui::Slider::new(&mut self.setting.x_offset, -1.0..=1.0)
+                        egui::Slider::new(&mut self.setting.x_offset, -10.0..=10.0)
                             .clamping(egui::SliderClamping::Never),
                     );
                     ui.end_row();
 
                     ui.label("y轴偏置");
                     ui.add(
-                        egui::Slider::new(&mut self.setting.y_offset, -1.0..=1.0)
+                        egui::Slider::new(&mut self.setting.y_offset, -10.0..=10.0)
                             .clamping(egui::SliderClamping::Never),
                     );
                     ui.end_row();
 
                     ui.label("起始宽度");
                     ui.add(
-                        egui::Slider::new(&mut self.setting.line_width, 0.5..=5.0)
+                        egui::Slider::new(&mut self.setting.line_width, 0.1..=100.0)
                             .clamping(egui::SliderClamping::Never),
                     );
                     ui.end_row();
@@ -792,10 +805,6 @@ impl FractalPendulumApp {
                 .num_columns(2)
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.label("状态");
-                    ui.label(self.data.debug_message.clone());
-                    ui.end_row();
-
                     ui.label("可见线段");
                     ui.label(format!(
                         "{}/{}",
@@ -823,9 +832,44 @@ impl FractalPendulumApp {
                 });
         });
 
-        if ui.button("重置").clicked() {
-            *self = Self::default();
-        }
+        ui.add(egui::TextEdit::singleline(&mut self.data.setting_json));
+
+        ui.horizontal(|ui| {
+            if ui.button("导入").clicked() {
+                if let Ok(new_setting) = serde_json::from_str(&self.data.setting_json) {
+                    self.setting = new_setting;
+                    self.data
+                        .toasts
+                        .info("已导入设置")
+                        .duration(Some(Duration::from_secs(5)))
+                        .show_progress_bar(true);
+                } else {
+                    self.data
+                        .toasts
+                        .warning("无法序列化字符串")
+                        .duration(Some(Duration::from_secs(5)))
+                        .show_progress_bar(true);
+                }
+            }
+            if ui.button("导出").clicked() {
+                self.data.setting_json =
+                    serde_json::to_string(&self.setting).expect("已存储的设置应当能够被序列化");
+                ui.ctx().copy_text(self.data.setting_json.clone());
+                self.data
+                    .toasts
+                    .info("已复制到剪贴板")
+                    .duration(Some(Duration::from_secs(5)))
+                    .show_progress_bar(true);
+            }
+            if ui.button("重置").clicked() {
+                *self = Self::default();
+                self.data
+                    .toasts
+                    .info("已重置设置")
+                    .duration(Some(Duration::from_secs(5)))
+                    .show_progress_bar(true);
+            };
+        });
     }
 }
 
