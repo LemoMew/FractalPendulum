@@ -1,8 +1,10 @@
 use std::{
+    collections::BTreeMap,
     f64::consts::{PI, TAU},
     time::Duration,
 };
 
+use chrono::{DateTime, Local};
 use egui::{CollapsingHeader, Color32, Pos2, Rect, Shape};
 use num_complex::Complex32;
 use rand::Rng as _;
@@ -94,18 +96,20 @@ fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 struct FractalPendulumApp {
-    // 要保存的设置放在这里
+    // 当前参数
     setting: FractalPendulumAppSetting,
 
-    // 其他数值在这里
+    // 已收藏参数
+    favorites: BTreeMap<DateTime<Local>, FractalPendulumAppSetting>,
+
+    // 其他不需要保存的数值
     #[serde(skip)]
     data: FractalPendulumAppData,
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 #[serde(default)]
 struct FractalPendulumAppSetting {
-    paused: bool,
     m: [f64; 3],
     l: [f64; 3],
     q: [f64; 6],
@@ -136,7 +140,6 @@ struct FractalPendulumAppSetting {
 impl Default for FractalPendulumAppSetting {
     fn default() -> Self {
         Self {
-            paused: false,
             m: [1.0, 0.5, 0.3],
             l: [1.0, 0.9, 0.8],
             q: [-3.0, 0.5, -0.3, -1.0, 0.5, 1.0],
@@ -166,13 +169,13 @@ impl Default for FractalPendulumAppSetting {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize, PartialEq)]
+#[derive(serde::Deserialize, serde::Serialize, PartialEq, Clone, Copy)]
 enum HueMode {
     Fixed,
     Dynamic,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, PartialEq)]
+#[derive(serde::Deserialize, serde::Serialize, PartialEq, Clone, Copy)]
 enum HueTarget {
     Omega1,
     Omega2,
@@ -183,6 +186,7 @@ enum HueTarget {
 }
 
 struct FractalPendulumAppData {
+    paused: bool,
     toasts: egui_notify::Toasts,
     opacity: f32,
     line_count: usize,
@@ -198,7 +202,10 @@ impl Default for FractalPendulumApp {
         Self {
             setting: FractalPendulumAppSetting::default(),
 
+            favorites: BTreeMap::new(),
+
             data: FractalPendulumAppData {
+                paused: false,
                 toasts: egui_notify::Toasts::new(),
                 opacity: 1.0,
                 line_count: 0,
@@ -231,14 +238,14 @@ impl FractalPendulumApp {
     // 显示内容
     fn ui(&mut self, ui: &mut egui::Ui) {
         // 没有暂停时，一直请求重绘并且迭代微分方程
-        if !self.setting.paused {
+        if !self.data.paused {
             ui.ctx().request_repaint();
             let ode = Ode::new(self);
             let mut stepper = ode_solvers::Dop853::new(
                 ode,
                 0.0,
                 self.setting.delta_t,
-                self.setting.h,
+                self.setting.h.min(self.setting.delta_t),
                 State::new(
                     self.setting.q[0],
                     self.setting.q[1],
@@ -279,7 +286,7 @@ impl FractalPendulumApp {
                     - m3 * g * l3 * (q1 + q5).cos();
                 self.data.e = self.data.t + self.data.v;
             } else {
-                self.setting.paused = true;
+                self.data.paused = true;
                 self.data
                     .toasts
                     .warning("数值计算出错，已暂停")
@@ -301,7 +308,7 @@ impl FractalPendulumApp {
         ui.multiply_opacity(self.data.opacity);
         egui::Frame::popup(ui.style()).show(ui, |ui| {
             ui.set_max_width(270.0);
-            CollapsingHeader::new("选项").show(ui, |ui| self.options_ui(ui));
+            CollapsingHeader::new("").show(ui, |ui| self.options_ui(ui));
         });
     }
 
@@ -475,7 +482,7 @@ impl FractalPendulumApp {
     #[expect(clippy::too_many_lines)]
     // 又臭又长的画设置界面函数，用不着注释，对着成品看就是
     fn options_ui(&mut self, ui: &mut egui::Ui) {
-        ui.checkbox(&mut self.setting.paused, "暂停");
+        ui.checkbox(&mut self.data.paused, "暂停");
 
         ui.add(
             egui::DragValue::new(&mut self.data.opacity)
@@ -800,7 +807,7 @@ impl FractalPendulumApp {
                 });
         });
 
-        CollapsingHeader::new("debug info").show(ui, |ui| {
+        CollapsingHeader::new("调试信息").show(ui, |ui| {
             egui::Grid::new("调试信息网格")
                 .num_columns(2)
                 .striped(true)
@@ -832,43 +839,80 @@ impl FractalPendulumApp {
                 });
         });
 
-        ui.add(egui::TextEdit::singleline(&mut self.data.setting_json));
+        CollapsingHeader::new("设置").show(ui, |ui| {
+            ui.add(egui::TextEdit::singleline(&mut self.data.setting_json));
 
-        ui.horizontal(|ui| {
-            if ui.button("导入").clicked() {
-                if let Ok(new_setting) = serde_json::from_str(&self.data.setting_json) {
-                    self.setting = new_setting;
+            ui.horizontal(|ui| {
+                if ui.button("收藏").clicked() {
+                    self.favorites.insert(Local::now(), self.setting.clone());
                     self.data
                         .toasts
-                        .info("已导入设置")
-                        .duration(Some(Duration::from_secs(5)))
-                        .show_progress_bar(true);
-                } else {
-                    self.data
-                        .toasts
-                        .warning("无法序列化字符串")
+                        .info("已收藏当前设置")
                         .duration(Some(Duration::from_secs(5)))
                         .show_progress_bar(true);
                 }
+
+                if ui.button("导入").clicked() {
+                    if let Ok(new_setting) = serde_json::from_str(&self.data.setting_json) {
+                        self.setting = new_setting;
+                        self.data
+                            .toasts
+                            .info("已导入设置")
+                            .duration(Some(Duration::from_secs(5)))
+                            .show_progress_bar(true);
+                    } else {
+                        self.data
+                            .toasts
+                            .warning("无法序列化字符串")
+                            .duration(Some(Duration::from_secs(5)))
+                            .show_progress_bar(true);
+                    }
+                }
+
+                if ui.button("导出").clicked() {
+                    self.data.setting_json =
+                        serde_json::to_string(&self.setting).expect("已存储的设置应当能够被序列化");
+                    ui.ctx().copy_text(self.data.setting_json.clone());
+                    self.data
+                        .toasts
+                        .info("已复制到剪贴板")
+                        .duration(Some(Duration::from_secs(5)))
+                        .show_progress_bar(true);
+                }
+
+                if ui.button("重置").clicked() {
+                    self.setting = FractalPendulumAppSetting::default();
+                    self.data
+                        .toasts
+                        .info("已重置设置")
+                        .duration(Some(Duration::from_secs(5)))
+                        .show_progress_bar(true);
+                };
+            });
+
+            if !self.favorites.is_empty() {
+                egui::ComboBox::from_id_salt("收藏夹选择")
+                    .selected_text("收藏夹")
+                    .show_ui(ui, |ui| {
+                        let mut to_remove = None;
+                        for (date_time, setting) in self.favorites.iter() {
+                            ui.horizontal(|ui| {
+                                ui.label(date_time.format("%Y-%m-%d %H:%M:%S").to_string());
+
+                                if ui.button("应用").clicked() {
+                                    self.setting = setting.clone();
+                                }
+
+                                if ui.button("删除").clicked() {
+                                    to_remove = Some(date_time.clone());
+                                }
+                            });
+                        }
+                        if let Some(date_time) = to_remove {
+                            self.favorites.remove(&date_time);
+                        }
+                    });
             }
-            if ui.button("导出").clicked() {
-                self.data.setting_json =
-                    serde_json::to_string(&self.setting).expect("已存储的设置应当能够被序列化");
-                ui.ctx().copy_text(self.data.setting_json.clone());
-                self.data
-                    .toasts
-                    .info("已复制到剪贴板")
-                    .duration(Some(Duration::from_secs(5)))
-                    .show_progress_bar(true);
-            }
-            if ui.button("重置").clicked() {
-                *self = Self::default();
-                self.data
-                    .toasts
-                    .info("已重置设置")
-                    .duration(Some(Duration::from_secs(5)))
-                    .show_progress_bar(true);
-            };
         });
     }
 }
@@ -906,7 +950,7 @@ impl ode_solvers::System<f64, State> for Ode {
         let q5 = y[4];
         let q6 = y[5];
 
-        // sympy给我托梦来的
+        // 托梦来的
         let denominator = l1 * (m1 + m2 * q3.sin() * q3.sin() + m3 * q5.sin() * q5.sin());
         dy[0] = q2;
         dy[2] = q4;
