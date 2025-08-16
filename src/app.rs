@@ -9,21 +9,15 @@ use egui::{CollapsingHeader, Color32, Pos2, Rect, Shape};
 use num_complex::Complex32;
 use rand::Rng as _;
 
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize, Default)]
-#[serde(default)] // if we add new fields, give them default values when deserializing old state
+#[serde(default)]
 pub struct TemplateApp {
     fractal_pendulum_app: FractalPendulumApp,
 }
 
 impl TemplateApp {
-    /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // This is also where you can customize the look and feel of egui using
-        // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
-
         // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
@@ -33,12 +27,10 @@ impl TemplateApp {
 }
 
 impl eframe::App for TemplateApp {
-    /// Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
-    /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         // 获取每帧耗时
         self.fractal_pendulum_app.data.frame_time =
@@ -895,7 +887,7 @@ impl FractalPendulumApp {
                     .selected_text("收藏夹")
                     .show_ui(ui, |ui| {
                         let mut to_remove = None;
-                        for (date_time, setting) in self.favorites.iter() {
+                        for (date_time, setting) in &self.favorites {
                             ui.horizontal(|ui| {
                                 ui.label(date_time.format("%Y-%m-%d %H:%M:%S").to_string());
 
@@ -904,7 +896,7 @@ impl FractalPendulumApp {
                                 }
 
                                 if ui.button("删除").clicked() {
-                                    to_remove = Some(date_time.clone());
+                                    to_remove = Some(*date_time);
                                 }
                             });
                         }
@@ -988,6 +980,7 @@ impl ode_solvers::System<f64, State> for Ode {
 }
 
 // -------- -------- -------- -------- -------- -------- -------- --------
+// 一些简单的工具函数
 
 fn hsl_to_rgb(h: f32, s: f32, l: f32) -> Color32 {
     let h = if h >= 0.0 {
